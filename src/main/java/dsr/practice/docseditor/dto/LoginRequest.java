@@ -19,4 +19,6 @@ public class LoginRequest {
     @Size(min = 8, max = 255, message = "Длина пароля должна быть от 8 до 255 символов")
     @NotBlank(message = "Пароль не может быть пустыми")
     private String password;
+
+    private String deviceId;
 }

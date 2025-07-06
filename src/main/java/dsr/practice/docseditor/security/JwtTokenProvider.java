@@ -24,7 +24,7 @@ public class JwtTokenProvider {
     private final AppProperties appProperties;
     private final UserSessionRepository userSessionRepository;
 
-    private String generateAccessToken(User user) {
+    public String generateAccessToken(User user) {
         return Jwts.builder()
                 .setSubject(user.getUsername())
                 .claim("email", user.getEmail())
@@ -34,7 +34,7 @@ public class JwtTokenProvider {
                 .compact();
     }
 
-    private String generateRefreshToken(User user, String deviceInfo, String ipAdress) {
+    public String generateRefreshToken(User user, String deviceInfo, String ipAdress) {
         String token = UUID.randomUUID().toString();
 
         UserSession userSession = UserSession.builder()
