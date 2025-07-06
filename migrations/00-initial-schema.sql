@@ -24,3 +24,14 @@ CREATE TABLE document_versions (
    created_by UUID REFERENCES users(id),
    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE user_sessions
+(
+    session_id    BIGSERIAL PRIMARY KEY,
+    user_id       UUID REFERENCES users (id) ON DELETE CASCADE,
+    token         VARCHAR(255) UNIQUE NOT NULL,
+    device_info   TEXT,
+    ip_address    VARCHAR(45),
+    expires_at    TIMESTAMP NOT NULL,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

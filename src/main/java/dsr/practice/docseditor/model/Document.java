@@ -10,7 +10,7 @@ import java.util.UUID;
 @Table(name = "documents")
 @Getter
 @Setter
-@EqualsAndHashCode()
+@EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder

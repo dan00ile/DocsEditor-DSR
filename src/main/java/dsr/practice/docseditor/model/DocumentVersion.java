@@ -10,7 +10,7 @@ import java.util.UUID;
 @Table(name = "document_versions")
 @Getter
 @Setter
-@EqualsAndHashCode()
+@EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder

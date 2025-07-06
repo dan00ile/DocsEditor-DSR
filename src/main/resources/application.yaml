@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: docsEditor
+  liquibase:
+    enabled: false
+  security:
+    user:
+      name: admin
+      password: secret
+      roles: ADMIN
+  datasource:
+    url: jdbc:postgresql://localhost:5436/docsEditorDB
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
