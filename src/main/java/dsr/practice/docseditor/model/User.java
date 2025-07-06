@@ -22,4 +22,5 @@ public class User {
     private String email;
     private String passwordHash;
     private LocalDateTime createdAt;
+    private LocalDateTime lastLogin;
 }
