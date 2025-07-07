@@ -28,9 +28,9 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
-    public AuthResponse createAuthResponse(String email, String ipAddress, String deviceInfo, String deviceId) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new BadCredentialsException("Пользователь с email " + email + " не найден"));
+    public AuthResponse createAuthResponse(String username, String ipAddress, String deviceInfo, String deviceId) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BadCredentialsException("Пользователь с email " + username + " не найден"));
 
         updateLastLogin(user);
 

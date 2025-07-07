@@ -8,11 +8,13 @@ import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
-import java.security.Key;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.UUID;
@@ -23,6 +25,7 @@ import java.util.function.Function;
 public class JwtTokenProvider {
     private final AppProperties appProperties;
     private final UserSessionRepository userSessionRepository;
+    private final UserDetailsService userDetailsService;
 
     public String generateAccessToken(User user) {
         return Jwts.builder()
@@ -30,7 +33,7 @@ public class JwtTokenProvider {
                 .claim("email", user.getEmail())
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + appProperties.getJwt().getAccessTokenExpiresMs()))
-                .signWith(Keys.hmacShaKeyFor(appProperties.getJwt().getSecret().getBytes()), SignatureAlgorithm.HS512)
+                .signWith(Keys.hmacShaKeyFor(appProperties.getJwt().getSecret().getBytes()), SignatureAlgorithm.HS256)
                 .compact();
     }
 
@@ -56,17 +59,6 @@ public class JwtTokenProvider {
         return (username.equals(userDetails.getUsername()) && isTokenActive(token));
     }
 
-    /**
-     * Валидирует JWT токен без проверки UserDetails
-     *
-     * @param token JWT токен для проверки
-     * @return true если токен валидный, false в противном случае
-     * @throws SignatureException       если подпись токена неверна
-     * @throws MalformedJwtException    если формат токена неверен
-     * @throws ExpiredJwtException      если срок действия токена истек
-     * @throws UnsupportedJwtException  если токен не поддерживается
-     * @throws IllegalArgumentException если токен не содержит claims
-     */
     public boolean validateToken(String token) throws SignatureException, MalformedJwtException,
             ExpiredJwtException, UnsupportedJwtException,
             IllegalArgumentException {
@@ -76,6 +68,20 @@ public class JwtTokenProvider {
 
         jwtParser.parseClaimsJws(token);
         return isTokenActive(token);
+    }
+
+    public Authentication getAuthentication(String token) {
+        try {
+            if (validateToken(token)) {
+                String username = extractUserName(token);
+                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                return new UsernamePasswordAuthenticationToken(
+                        userDetails, "", userDetails.getAuthorities());
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        return null;
     }
 
     private boolean isTokenActive(String token) {

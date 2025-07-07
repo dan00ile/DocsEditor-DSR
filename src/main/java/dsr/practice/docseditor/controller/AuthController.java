@@ -1,5 +1,6 @@
 package dsr.practice.docseditor.controller;
 
+import dsr.practice.docseditor.dto.ApiResponse;
 import dsr.practice.docseditor.dto.AuthResponse;
 import dsr.practice.docseditor.dto.LoginRequest;
 import dsr.practice.docseditor.dto.RefreshTokenRequest;
@@ -29,18 +30,18 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
 
     @PostMapping("register")
-    public ResponseEntity<Map<String, Object>> registerUser(@RequestBody RegisterRequest registerRequest,
+    public ResponseEntity<ApiResponse<Map<String, Object>>> registerUser(@RequestBody RegisterRequest registerRequest,
                                                             HttpServletRequest request) {
         String ipAddress = request.getRemoteAddr();
         String deviceInfo = request.getHeader("User-Agent");
 
         String userId = userService.register(registerRequest, ipAddress, deviceInfo);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("message", "Регистрация успешно завершена.");
-        response.put("userId", userId);
+        Map<String, Object> responseData = new HashMap<>();
+        responseData.put("message", "Регистрация успешно завершена.");
+        responseData.put("userId", userId);
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(responseData));
     }
 
     @PostMapping("login")

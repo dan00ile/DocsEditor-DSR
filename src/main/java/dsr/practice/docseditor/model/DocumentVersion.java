@@ -23,4 +23,7 @@ public class DocumentVersion {
     private String content;
     private UUID createdBy;
     private LocalDateTime createdAt;
+    
+    @Transient
+    private String authorName;
 }
