@@ -1,9 +1,11 @@
 package dsr.practice.docseditor.model;
 
+import dsr.practice.docseditor.dto.ActiveUserDto;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -24,4 +26,7 @@ public class Document {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private Integer versionCounter;
+    
+    @Transient
+    private List<ActiveUserDto> activeUsers;
 }
