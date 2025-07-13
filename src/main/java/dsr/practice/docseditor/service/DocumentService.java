@@ -40,7 +40,7 @@ public class DocumentService {
                 .updatedAt(LocalDateTime.now())
                 .title(request.getTitle() == null ? "New Document" : request.getTitle())
                 .createdBy(currentUserId)
-                .content("Hello!")
+                .content(request.getContent() == null ? "Hello!" : request.getContent())
                 .versionCounter(0)
                 .build();
         return documentRepository.save(newDocument);
@@ -216,9 +216,7 @@ public class DocumentService {
     }
 
     private void validateUserAccess(Document document, UUID userId) {
-        // TODO: логика проверки что есть доступ к документу
-        if (!document.getCreatedBy().equals(userId)) {
-            throw new AccessDeniedException("User does not have access to this document");
-        }
+        // Разрешаем доступ всем авторизованным пользователям
+        // Проверка userId на null уже происходит на уровне аутентификации
     }
 }
