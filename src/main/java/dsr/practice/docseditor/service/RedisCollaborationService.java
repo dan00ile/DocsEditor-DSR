@@ -2,6 +2,7 @@ package dsr.practice.docseditor.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dsr.practice.docseditor.dto.ActiveUserDto;
+import dsr.practice.docseditor.dto.EditOperation;
 import dsr.practice.docseditor.model.User;
 import dsr.practice.docseditor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;

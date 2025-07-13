@@ -2,6 +2,7 @@ package dsr.practice.docseditor.controller;
 
 import dsr.practice.docseditor.dto.ActiveUserDto;
 import dsr.practice.docseditor.dto.DocumentUpdateRequest;
+import dsr.practice.docseditor.dto.EditOperation;
 import dsr.practice.docseditor.model.Document;
 import dsr.practice.docseditor.service.CollaborationService;
 import dsr.practice.docseditor.utils.SecurityUtils;
@@ -11,7 +12,6 @@ import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -46,17 +46,15 @@ public class CollaborationWebSocketController {
             
             boolean isNewConnection = collaborationService.connectUserToDocument(documentId, userId);
             
-            List<ActiveUserDto> activeUsers = collaborationService.getActiveUsers(documentId, userId);
+            List<ActiveUserDto> allActiveUsers = collaborationService.getActiveUsersList(documentId);
 
-            messagingTemplate.convertAndSendToUser(
-                    principal.getName(),
-                    "/queue/active-users",
-                    activeUsers != null ? activeUsers : Collections.emptyList()
+            messagingTemplate.convertAndSend(
+                    "/topic/documents/" + documentId + "/active-users",
+                    allActiveUsers != null ? allActiveUsers : Collections.emptyList()
             );
 
             if (isNewConnection) {
                 String username = principal.getName();
-
                 collaborationService.notifyUserJoined(documentId, userId, username);
             }
             
@@ -84,12 +82,36 @@ public class CollaborationWebSocketController {
                     documentId, principal != null ? principal.getName() : "unknown");
                     
             UUID userId = securityUtils.getCurrentUserIdOrThrow();
+            log.debug("Получен ID пользователя для отключения: {}", userId);
 
             String username = principal.getName();
+            log.debug("Отключаем пользователя {} ({}) от документа {}", username, userId, documentId);
+
+            List<ActiveUserDto> usersBeforeDisconnect = collaborationService.getActiveUsersList(documentId);
+            log.debug("Пользователей в документе до отключения: {}", usersBeforeDisconnect.size());
 
             collaborationService.disconnectUserFromDocument(documentId, userId);
+            log.debug("Пользователь {} успешно отключен от документа {}", userId, documentId);
 
-            collaborationService.notifyUserLeft(documentId, userId, username);
+            try {
+                collaborationService.notifyUserLeft(documentId, userId, username);
+                log.debug("Уведомление об отключении пользователя {} отправлено", username);
+            } catch (Exception e) {
+                log.error("Ошибка при отправке уведомления об отключении пользователя {}: {}", username, e.getMessage(), e);
+            }
+
+            List<ActiveUserDto> remainingUsers = collaborationService.getActiveUsersList(documentId);
+            log.debug("Пользователей в документе после отключения: {}", remainingUsers.size());
+
+            try {
+                messagingTemplate.convertAndSend(
+                        "/topic/documents/" + documentId + "/active-users",
+                        remainingUsers
+                );
+                log.debug("Обновленный список пользователей отправлен всем клиентам документа {}", documentId);
+            } catch (Exception e) {
+                log.error("Ошибка при отправке обновленного списка пользователей для документа {}: {}", documentId, e.getMessage(), e);
+            }
             
             log.debug("Пользователь {} успешно отключен от документа {}", userId, documentId);
         } catch (Exception e) {
@@ -127,9 +149,9 @@ public class CollaborationWebSocketController {
                     typingMessage
             );
             
-            log.debug("Событие ввода успешно обработано для пользователя {} в документе {}", userId, documentId);
+            log.debug("Ввод успешно обработан для пользователя {} в документе {}", userId, documentId);
         } catch (Exception e) {
-            log.error("Ошибка при обработке события ввода для документа {}: {}", documentId, e.getMessage(), e);
+            log.error("Ошибка при обработке ввода для документа {}: {}", documentId, e.getMessage(), e);
         }
     }
 
@@ -162,6 +184,93 @@ public class CollaborationWebSocketController {
             
         } catch (Exception e) {
             log.error("Ошибка при обновлении документа {}: {}", documentId, e.getMessage(), e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("message", e.getMessage());
+            errorResult.put("clientId", updateRequest.getClientId());
+            return errorResult;
+        }
+    }
+    
+    @MessageMapping("/documents/{documentId}/operation")
+    @SendToUser("/queue/operation-result")
+    @PreAuthorize("isAuthenticated()")
+    public Map<String, Object> handleOperation(
+            @DestinationVariable UUID documentId,
+            @Payload EditOperation operation,
+            Principal principal) {
+        try {
+            log.debug("Обработка операции для документа: {}, пользователь: {}, clientId: {}, тип: {}", 
+                    documentId, principal != null ? principal.getName() : "unknown", 
+                    operation.getClientId(), operation.getType());
+            
+            UUID userId = securityUtils.getCurrentUserIdOrThrow();
+            operation.setUserId(userId);
+            operation.setDocumentId(documentId);
+            operation.setServerTimestamp(System.currentTimeMillis());
+
+            DocumentUpdateRequest updateRequest = new DocumentUpdateRequest();
+            updateRequest.setOperations(Collections.singletonList(operation));
+            updateRequest.setClientId(operation.getClientId());
+            
+            Document updatedDocument = collaborationService.handleDocumentUpdate(
+                    documentId, updateRequest, userId);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "success");
+            result.put("documentId", documentId);
+            result.put("operation", operation);
+            result.put("updatedAt", updatedDocument.getUpdatedAt());
+            result.put("clientId", operation.getClientId());
+            
+            return result;
+            
+        } catch (Exception e) {
+            log.error("Ошибка при обработке операции для документа {}: {}", documentId, e.getMessage(), e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("message", e.getMessage());
+            errorResult.put("clientId", operation.getClientId());
+            return errorResult;
+        }
+    }
+    
+    @MessageMapping("/documents/{documentId}/batch-operations")
+    @SendToUser("/queue/document-update-result")
+    @PreAuthorize("isAuthenticated()")
+    public Map<String, Object> handleBatchOperations(
+            @DestinationVariable UUID documentId,
+            @Payload DocumentUpdateRequest updateRequest,
+            Principal principal) {
+        try {
+            log.debug("Обработка пакета операций для документа: {}, пользователь: {}, clientId: {}, количество операций: {}", 
+                    documentId, principal != null ? principal.getName() : "unknown", 
+                    updateRequest.getClientId(), updateRequest.getOperations().size());
+
+            UUID userId = securityUtils.getCurrentUserIdOrThrow();
+            
+            long timestamp = System.currentTimeMillis();
+            for (EditOperation operation : updateRequest.getOperations()) {
+                operation.setUserId(userId);
+                operation.setDocumentId(documentId);
+                operation.setServerTimestamp(timestamp);
+            }
+            
+            Document updatedDocument = collaborationService.handleDocumentUpdate(
+                    documentId, updateRequest, userId);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "success");
+            result.put("documentId", documentId);
+            result.put("operationsCount", updateRequest.getOperations().size());
+            result.put("updatedAt", updatedDocument.getUpdatedAt());
+            result.put("clientId", updateRequest.getClientId());
+            
+            log.debug("Пакет операций успешно обработан для документа {}", documentId);
+            return result;
+            
+        } catch (Exception e) {
+            log.error("Ошибка при обработке пакета операций для документа {}: {}", documentId, e.getMessage(), e);
             Map<String, Object> errorResult = new HashMap<>();
             errorResult.put("status", "error");
             errorResult.put("message", e.getMessage());

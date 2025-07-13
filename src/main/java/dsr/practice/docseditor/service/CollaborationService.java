@@ -2,6 +2,7 @@ package dsr.practice.docseditor.service;
 
 import dsr.practice.docseditor.dto.ActiveUserDto;
 import dsr.practice.docseditor.dto.DocumentUpdateRequest;
+import dsr.practice.docseditor.dto.EditOperation;
 import dsr.practice.docseditor.model.Document;
 import dsr.practice.docseditor.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +20,7 @@ public class CollaborationService {
     private final DocumentRepository documentRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final RedisCollaborationService redisCollaborationService;
-
+    
     public synchronized boolean connectUserToDocument(UUID documentId, UUID userId) {
         return redisCollaborationService.connectUserToDocument(documentId, userId);
     }
@@ -50,43 +51,106 @@ public class CollaborationService {
 
         if (updateRequest.getLastKnownUpdate() != null && 
             document.getUpdatedAt().isAfter(updateRequest.getLastKnownUpdate())) {
-            log.info("Обнаружен конфликт версий документа {}. Клиент: {}, Последнее известное обновление клиента: {}, Текущее обновление сервера: {}", 
-                    documentId, updateRequest.getClientId(), updateRequest.getLastKnownUpdate(), document.getUpdatedAt());
 
-            notifyClientAboutConflict(documentId, document, updateRequest.getClientId());
+            long timeDifferenceSeconds = java.time.Duration.between(
+                updateRequest.getLastKnownUpdate(), 
+                document.getUpdatedAt()
+            ).getSeconds();
+
+            long timeDifferenceMillis = java.time.Duration.between(
+                updateRequest.getLastKnownUpdate(), 
+                document.getUpdatedAt()
+            ).toMillis();
             
-            return document;
+            log.debug("Время клиента: {}, Время сервера: {}, Разница: {} сек ({} мс)", 
+                updateRequest.getLastKnownUpdate(), document.getUpdatedAt(), 
+                timeDifferenceSeconds, timeDifferenceMillis);
+
+            if (timeDifferenceSeconds > 3) {
+                log.info("Обнаружен конфликт версий документа {}. Клиент: {}, Последнее известное обновление клиента: {}, Текущее обновление сервера: {}, Разница: {} сек", 
+                        documentId, updateRequest.getClientId(), updateRequest.getLastKnownUpdate(), document.getUpdatedAt(), timeDifferenceSeconds);
+                
+                notifyClientAboutConflict(documentId, document, updateRequest.getClientId());
+                
+                return document;
+            } else {
+                log.debug("Игнорируем незначительное расхождение версий ({} сек) для документа {}. Клиент: {}", 
+                        timeDifferenceSeconds, documentId, updateRequest.getClientId());
+            }
         }
 
-        document.setContent(updateRequest.getContent());
-        document.setUpdatedAt(LocalDateTime.now());
+        String newContent = document.getContent();
+        LocalDateTime updateTime = LocalDateTime.now();
         
-        Document updatedDocument = documentRepository.save(document);
-        log.info("Документ {} успешно обновлен пользователем {}", documentId, userId);
+        if (updateRequest.getOperations() != null && !updateRequest.getOperations().isEmpty()) {
+            List<EditOperation> confirmedOperations = new ArrayList<>();
+            
+            for (EditOperation operation : updateRequest.getOperations()) {
+                operation.setServerTimestamp(System.currentTimeMillis());
+                operation.setUserId(userId);
 
-        registerUserActivity(documentId, userId);
+                try {
+                    switch (operation.getType()) {
+                        case "insert" -> {
+                            if (operation.getPosition() >= 0 && operation.getPosition() <= newContent.length()) {
+                                newContent = newContent.substring(0, operation.getPosition()) +
+                                        operation.getCharacter() +
+                                        newContent.substring(operation.getPosition());
+                                confirmedOperations.add(operation);
+                            } else {
+                                log.warn("Неверный индекс для операции вставки: {}", operation.getPosition());
+                            }
+                        }
+                        case "delete" -> {
+                            if (operation.getPosition() >= 0 && operation.getPosition() < newContent.length()) {
+                                newContent = newContent.substring(0, operation.getPosition()) +
+                                        newContent.substring(operation.getPosition() + 1);
+                                confirmedOperations.add(operation);
+                            } else {
+                                log.warn("Неверный индекс для операции удаления: {}", operation.getPosition());
+                            }
+                        }
+                        case "replace" -> {
+                            log.info("Выполнили операцию замены");
+                            newContent = operation.getCharacter();
+                            confirmedOperations.add(operation);
+                        }
+                        case null, default -> log.warn("Неверный тип операции: {}", operation.getType());
+                    }
+                } catch (Exception e) {
+                    log.error("Ошибка при обработке операции: {}", e.getMessage(), e);
+                }
+            }
 
-        UUID updatedBy = updateRequest.getUserId() != null ? updateRequest.getUserId() : userId;
+            document.setContent(newContent);
+            document.setUpdatedAt(updateTime);
+            documentRepository.save(document);
+            
+            log.info("Документ {} успешно обновлен пользователем {}", documentId, userId);
+            
+            registerUserActivity(documentId, userId);
 
-        Map<String, Object> updateMessage = new HashMap<>();
-        updateMessage.put("documentId", documentId);
-        updateMessage.put("content", updatedDocument.getContent());
-        updateMessage.put("updatedAt", updatedDocument.getUpdatedAt());
-        updateMessage.put("updatedBy", updatedBy);
-        updateMessage.put("clientId", updateRequest.getClientId());
-        updateMessage.put("type", "DOCUMENT_UPDATE");
-        
-        try {
-            messagingTemplate.convertAndSend(
-                    "/topic/documents/" + documentId + "/updates",
-                    updateMessage
-            );
-            log.info("Уведомление об обновлении документа {} успешно отправлено", documentId);
-        } catch (Exception e) {
-            log.error("Ошибка при отправке уведомления об обновлении документа {}: {}", documentId, e.getMessage(), e);
+            for (EditOperation operation : confirmedOperations) {
+                Map<String, Object> updateMessage = new HashMap<>();
+                updateMessage.put("documentId", documentId);
+                updateMessage.put("operation", operation);
+                updateMessage.put("updatedAt", updateTime);
+                updateMessage.put("updatedBy", userId);
+                updateMessage.put("clientId", updateRequest.getClientId());
+                updateMessage.put("type", "OPERATION_UPDATE");
+                
+                try {
+                    messagingTemplate.convertAndSend(
+                            "/topic/documents/" + documentId + "/updates",
+                            updateMessage
+                    );
+                } catch (Exception e) {
+                    log.error("Ошибка при отправке операции для документа {}: {}", documentId, e.getMessage(), e);
+                }
+            }
         }
         
-        return updatedDocument;
+        return document;
     }
 
     public void notifyClientAboutConflict(UUID documentId, Document document, String clientId) {
@@ -99,6 +163,7 @@ public class CollaborationService {
         conflictMessage.put("updatedBy", document.getCreatedBy());
         conflictMessage.put("clientId", "server-conflict-" + UUID.randomUUID());
         conflictMessage.put("type", "VERSION_CONFLICT");
+        conflictMessage.put("conflictThreshold", 3);
         
         try {
             messagingTemplate.convertAndSend(
@@ -165,47 +230,59 @@ public class CollaborationService {
     public void notifyUserJoined(UUID documentId, UUID userId, String username) {
         log.info("Уведомление о подключении пользователя {} к документу {}", username, documentId);
 
-        ActiveUserDto userDto = null;
-        List<ActiveUserDto> allUsers = redisCollaborationService.getActiveUsersList(documentId);
+        try {
+            ActiveUserDto userDto = null;
+            List<ActiveUserDto> allUsers = redisCollaborationService.getActiveUsersList(documentId);
 
-        for (ActiveUserDto user : allUsers) {
-            if (user.getUserId().equals(userId)) {
-                userDto = user;
-                break;
+            for (ActiveUserDto user : allUsers) {
+                if (user.getUserId().equals(userId)) {
+                    userDto = user;
+                    break;
+                }
             }
-        }
-        
-        if (userDto == null) {
-            log.warn("Не удалось найти информацию о пользователе {} для уведомления", userId);
-            return;
-        }
+            
+            if (userDto == null) {
+                log.warn("Не удалось найти информацию о пользователе {} для уведомления", userId);
+                return;
+            }
 
-        Map<String, Object> joinMessage = new HashMap<>();
-        joinMessage.put("type", "USER_JOIN");
-        joinMessage.put("userId", userId);
-        joinMessage.put("username", username);
-        joinMessage.put("color", userDto.getColor());
-        joinMessage.put("timestamp", System.currentTimeMillis());
-        
-        messagingTemplate.convertAndSend(
-                "/topic/documents/" + documentId + "/user-joined",
-                joinMessage
-        );
+            Map<String, Object> joinMessage = new HashMap<>();
+            joinMessage.put("type", "USER_JOIN");
+            joinMessage.put("userId", userId);
+            joinMessage.put("username", username);
+            joinMessage.put("color", userDto.getColor());
+            joinMessage.put("timestamp", System.currentTimeMillis());
+            
+            messagingTemplate.convertAndSend(
+                    "/topic/documents/" + documentId + "/user-joined",
+                    joinMessage
+            );
+            
+            log.debug("Уведомление о подключении пользователя {} успешно отправлено", username);
+        } catch (Exception e) {
+            log.error("Ошибка при отправке уведомления о подключении пользователя {}: {}", username, e.getMessage(), e);
+        }
     }
 
     public void notifyUserLeft(UUID documentId, UUID userId, String username) {
         log.info("Уведомление об отключении пользователя {} от документа {}", username, documentId);
 
-        Map<String, Object> leftMessage = new HashMap<>();
-        leftMessage.put("type", "USER_LEAVE");
-        leftMessage.put("userId", userId);
-        leftMessage.put("username", username);
-        leftMessage.put("timestamp", System.currentTimeMillis());
-        
-        messagingTemplate.convertAndSend(
-                "/topic/documents/" + documentId + "/user-left",
-                leftMessage
-        );
+        try {
+            Map<String, Object> leftMessage = new HashMap<>();
+            leftMessage.put("type", "USER_LEAVE");
+            leftMessage.put("userId", userId);
+            leftMessage.put("username", username);
+            leftMessage.put("timestamp", System.currentTimeMillis());
+            
+            messagingTemplate.convertAndSend(
+                    "/topic/documents/" + documentId + "/user-left",
+                    leftMessage
+            );
+            
+            log.debug("Уведомление об отключении пользователя {} успешно отправлено", username);
+        } catch (Exception e) {
+            log.error("Ошибка при отправке уведомления об отключении пользователя {}: {}", username, e.getMessage(), e);
+        }
     }
 
     public void handleDocumentDeleted(UUID documentId) {

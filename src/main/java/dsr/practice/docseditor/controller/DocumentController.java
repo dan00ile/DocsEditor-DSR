@@ -7,7 +7,6 @@ import dsr.practice.docseditor.dto.SaveVersionRequest;
 import dsr.practice.docseditor.exception.AccessDeniedException;
 import dsr.practice.docseditor.exception.DocumentNotFoundException;
 import dsr.practice.docseditor.exception.DuplicateVersionNameException;
-import dsr.practice.docseditor.exception.OptimisticLockingException;
 import dsr.practice.docseditor.model.Document;
 import dsr.practice.docseditor.model.DocumentVersion;
 import dsr.practice.docseditor.service.CollaborationService;
@@ -130,9 +129,6 @@ public class DocumentController {
 
             return ResponseEntity.ok(ApiResponse.success(updatedDocument));
 
-        } catch (OptimisticLockingException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(ApiResponse.error("Document was modified by another user", "CONFLICT"));
         } catch (DocumentNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(ApiResponse.error("Document not found", "NOT_FOUND"));

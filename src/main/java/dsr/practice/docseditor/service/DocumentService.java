@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import dsr.practice.docseditor.dto.EditOperation;
 
 @Service
 @RequiredArgsConstructor
@@ -168,7 +169,29 @@ public class DocumentService {
         UUID userId = securityUtils.getCurrentUserIdOrThrow();
         validateUserAccess(document, userId);
 
-        document.setContent(request.getContent());
+        if (request.getOperations() != null && !request.getOperations().isEmpty()) {
+            String newContent = document.getContent();
+            
+            for (EditOperation operation : request.getOperations()) {
+                if ("insert".equals(operation.getType())) {
+                    if (operation.getPosition() >= 0 && operation.getPosition() <= newContent.length()) {
+                        newContent = newContent.substring(0, operation.getPosition()) + 
+                                    operation.getCharacter() + 
+                                    newContent.substring(operation.getPosition());
+                    }
+                } else if ("delete".equals(operation.getType())) {
+                    if (operation.getPosition() >= 0 && operation.getPosition() < newContent.length()) {
+                        newContent = newContent.substring(0, operation.getPosition()) + 
+                                    newContent.substring(operation.getPosition() + 1);
+                    }
+                } else if ("replace".equals(operation.getType())) {
+                    newContent = operation.getCharacter();
+                }
+            }
+            
+            document.setContent(newContent);
+        }
+        
         document.setUpdatedAt(LocalDateTime.now());
         return documentRepository.save(document);
     }
@@ -216,7 +239,6 @@ public class DocumentService {
     }
 
     private void validateUserAccess(Document document, UUID userId) {
-        // Разрешаем доступ всем авторизованным пользователям
-        // Проверка userId на null уже происходит на уровне аутентификации
+        // TODO: давать доступ пользователям по почте
     }
 }
