@@ -1,4 +1,42 @@
 services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docseditor-backend
+    restart: always
+    depends_on:
+      - postgresql
+      - liquibase-migrations
+      - redis
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgresql:5436/docsEditorDB
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - APP_JWT_SECRET=${JWT_SECRET}
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./frontend/project
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=http://localhost:8080/api
+        - VITE_WS_URL=ws://localhost:8080/ws
+    container_name: docseditor-frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - app-network
+
   liquibase-migrations:
     container_name: migrations
     image: liquibase/liquibase:4.29
@@ -14,10 +52,13 @@ services:
       - update
     volumes:
       - ./migrations:/changesets
+    networks:
+      - app-network
 
   postgresql:
     image: postgres:17
     container_name: postgresDocsEditorDB
+    restart: always
     environment:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -27,6 +68,24 @@ services:
       - "5436:5436"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+      
+  redis:
+    image: redis:7.2-alpine
+    container_name: docseditor-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   postgres_data:
+  redis_data:
