@@ -17,6 +17,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -37,10 +39,16 @@ public class UserService {
         String accessToken = jwtTokenProvider.generateAccessToken(user);
         String refreshToken = jwtTokenProvider.generateRefreshToken(user, deviceInfo, ipAddress);
 
+        Map<String, Object> userData = new HashMap<>();
+        userData.put("id", user.getId().toString());
+        userData.put("username", user.getUsername());
+        userData.put("email", user.getEmail());
+
         return AuthResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .expiresIn((int) (appProperties.getJwt().getAccessTokenExpiresMs() / 1000))
+                .user(userData)
                 .build();
     }
 
@@ -56,11 +64,16 @@ public class UserService {
         String accessToken = jwtTokenProvider.generateAccessToken(user);
         String newRefreshToken = jwtTokenProvider.generateRefreshToken(user, deviceInfo, ipAddress);
 
+        Map<String, Object> userData = new HashMap<>();
+        userData.put("id", user.getId().toString());
+        userData.put("username", user.getUsername());
+        userData.put("email", user.getEmail());
 
         return AuthResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(newRefreshToken)
                 .expiresIn((int) (appProperties.getJwt().getAccessTokenExpiresMs() / 1000))
+                .user(userData)
                 .build();
     }
 
