@@ -22,9 +22,16 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
+import org.springframework.messaging.converter.MappingJackson2MessageConverter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.springframework.messaging.converter.MessageConverter;
 
 import java.security.Principal;
+import java.util.List;
 import java.util.Map;
+import java.text.SimpleDateFormat;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -170,5 +177,26 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registration.setMessageSizeLimit(128 * 1024);
         registration.setSendBufferSizeLimit(512 * 1024);
         registration.setSendTimeLimit(20000);
+    }
+    
+    @Bean
+    public MappingJackson2MessageConverter mappingJackson2MessageConverter() {
+        MappingJackson2MessageConverter converter = new MappingJackson2MessageConverter();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        objectMapper.registerModule(new JavaTimeModule());
+
+        objectMapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
+
+        objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"));
+        
+        converter.setObjectMapper(objectMapper);
+        return converter;
+    }
+    
+    @Override
+    public boolean configureMessageConverters(List<MessageConverter> messageConverters) {
+        messageConverters.add(mappingJackson2MessageConverter());
+        return false;
     }
 } 
