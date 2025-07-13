@@ -10,24 +10,23 @@ import dsr.practice.docseditor.exception.DuplicateVersionNameException;
 import dsr.practice.docseditor.exception.OptimisticLockingException;
 import dsr.practice.docseditor.model.Document;
 import dsr.practice.docseditor.model.DocumentVersion;
-import dsr.practice.docseditor.repository.DocumentRepository;
 import dsr.practice.docseditor.service.CollaborationService;
 import dsr.practice.docseditor.service.DocumentService;
 import dsr.practice.docseditor.utils.SecurityUtils;
 import jakarta.validation.Valid;
 import jakarta.validation.ValidationException;
-import jakarta.validation.constraints.Positive;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import dsr.practice.docseditor.dto.ActiveUserDto;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -242,6 +241,34 @@ public class DocumentController {
             log.error("Error restoring document version {} {}", documentId, versionId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("Failed to restore document version", "SERVER_ERROR"));
+        }
+    }
+
+    @PostMapping("/{documentId}/heartbeat")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<Void>> heartbeat(@PathVariable UUID documentId) {
+        try {
+            UUID userId = securityUtils.getCurrentUserIdOrThrow();
+            collaborationService.registerUserActivity(documentId, userId);
+            return ResponseEntity.ok(ApiResponse.success(null));
+        } catch (Exception e) {
+            log.error("Error processing heartbeat for document {}", documentId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to process heartbeat", "SERVER_ERROR"));
+        }
+    }
+    
+    @GetMapping("/{documentId}/active-users")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<List<ActiveUserDto>>> getActiveUsers(@PathVariable UUID documentId) {
+        try {
+            UUID userId = securityUtils.getCurrentUserIdOrThrow();
+            List<ActiveUserDto> activeUsers = collaborationService.getActiveUsersList(documentId);
+            return ResponseEntity.ok(ApiResponse.success(activeUsers));
+        } catch (Exception e) {
+            log.error("Error getting active users for document {}", documentId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to get active users", "SERVER_ERROR"));
         }
     }
 }
