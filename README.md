@@ -13,17 +13,10 @@
 ## Технологии
 
 - **Backend**: Spring Boot (Java/Kotlin, JVM 24)
-- **Frontend**: JavaScript-фреймворк (React/Angular/Vue) + Bootstrap
+- **Frontend**: TypeScript+React
 - **Сборка**: Gradle
-- **База данных**: Реляционная (например, PostgreSQL/MySQL)
+- **База данных**: PostgreSQL
 - **Синхронизация**: Стратегия "last-write-wins"
-
-## Запуск в production режиме
-
-### Предварительные требования
-
-- Docker и Docker Compose
-- Git
 
 ### Шаги для запуска
 
@@ -35,15 +28,10 @@
 
 2. Создайте файл `.env` в корневой директории проекта со следующим содержимым:
    ```
-   # Настройки базы данных
    DB_USERNAME=admin
    DB_PASSWORD=admin
-   
-   # Настройки JWT
-   JWT_SECRET=d3587b318c4720a6cc3eed4c7cf9f3819206ef76893fd025
+   JWT_SECRET=ВАШ_СЕКРЕТНЫЙ_КЛЮЧ
    ```
-   
-   > **Примечание**: Для продакшн окружения рекомендуется использовать более сложные пароли и секретный ключ.
 
 3. Запустите приложение с помощью Docker Compose:
    ```bash
@@ -51,16 +39,6 @@
    ```
 
 4. Приложение будет доступно по следующим URL:
-   - Фронтенд: http://localhost
+   - Фронтенд: http://localhost:3000
    - API бэкенда: http://localhost:8080/api
 
-### Остановка приложения
-
-```bash
-docker-compose down
-```
-
-Для удаления всех данных (включая базу данных):
-```bash
-docker-compose down -v
-```
