@@ -9,4 +9,5 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class CreateDocumentRequest {
     private String title;
+    private String content;
 }

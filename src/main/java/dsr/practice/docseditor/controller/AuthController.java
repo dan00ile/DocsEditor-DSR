@@ -1,6 +1,5 @@
 package dsr.practice.docseditor.controller;
 
-import dsr.practice.docseditor.dto.ApiResponse;
 import dsr.practice.docseditor.dto.AuthResponse;
 import dsr.practice.docseditor.dto.LoginRequest;
 import dsr.practice.docseditor.dto.RefreshTokenRequest;
@@ -19,9 +18,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashMap;
-import java.util.Map;
-
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -30,18 +26,21 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
 
     @PostMapping("register")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> registerUser(@RequestBody RegisterRequest registerRequest,
-                                                            HttpServletRequest request) {
+    public ResponseEntity<AuthResponse> registerUser(@RequestBody RegisterRequest registerRequest,
+                                                HttpServletRequest request) {
         String ipAddress = request.getRemoteAddr();
         String deviceInfo = request.getHeader("User-Agent");
 
         String userId = userService.register(registerRequest, ipAddress, deviceInfo);
 
-        Map<String, Object> responseData = new HashMap<>();
-        responseData.put("message", "Регистрация успешно завершена.");
-        responseData.put("userId", userId);
+        AuthResponse authResponse = userService.createAuthResponse(
+                registerRequest.getUsername(),
+                ipAddress,
+                deviceInfo,
+                null
+        );
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(responseData));
+        return ResponseEntity.status(HttpStatus.CREATED).body(authResponse);
     }
 
     @PostMapping("login")
